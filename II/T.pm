@@ -95,7 +95,7 @@ sub post {
     my $post = II::T->pre( $data->{post} );
 
     my $cut;
-    if ( $data->{subg} =~ /Re:\s(.+)/ ) {
+    if ( $data->{subg} =~ /Re:\s+(.+)/ ) {
         $cut = $1;
     }
     else {
@@ -132,7 +132,7 @@ sub send {
 
     my $post = II::T->pre( $data->{post} );
 
-    $data->{subg} =~ s/Re:(.+)/$1/g;
+    $data->{subg} =~ s/Re:\s+(.+)/$1/g;
 
     $p->param( SUBG => $data->{subg} );
     $p->param( TIME => "$time" );
@@ -150,7 +150,7 @@ sub pre {
 
     $post =~ s/</&lt;/g;
     $post =~ s/>/&gt;/g;
-    $post =~ s/&gt;(.+)/<font color='green'>>$1<\/font><br>/g;
+    $post =~ s/&gt;(.+)/<font color='green'>>$1<\/font>/g;
     $post =~ s/^$/<br>\n/g;
     $post =~ s/(.?)\n/$1<br>\n/g;
     $post
@@ -164,12 +164,12 @@ sub pre {
     while (<$fh>) {
         my $line = $_;
         if ( ( $line =~ /^====/ ) and ( $pre == 0 ) ) {
-            $txt .= $_;
-            $line =~ s/====/<pre>/g;
+            # $txt .= $_;
+            $line =~ s/====/<pre class="pre">/g;
             $pre = 1;
         }
         elsif ( ( $line =~ /^====/ ) and ( $pre == 1 ) ) {
-            $line =~ s/====/<\/pre>\n====/g;
+            $line =~ s/====/<\/pre>\n/g;
             $pre = 0;
         }
         $txt .= $line;
