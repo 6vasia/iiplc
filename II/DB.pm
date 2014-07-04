@@ -8,7 +8,7 @@ use Data::Dumper;
 sub new {
     my $class = shift;
 
-    my $dbh = DBI->connect( "dbi:SQLite:dbname=ii.sql", "", "" );
+    my $dbh = DBI->connect( "dbi:SQLite:dbname=/var/cache/iiplc/ii.sql", "", "" );
     my $sql = SQL::Abstract->new();
 
     my $self = {
