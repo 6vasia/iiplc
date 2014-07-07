@@ -10,6 +10,15 @@ sub new {
     return $self;
 }
 
+sub main {
+    my ( $self, $title, $content ) = @_;
+    my $t = HTML::Template->new( filename => 't/main.html' );
+
+    $t->param( TITLE => $title, CONTENT => $content );
+
+    return $t->output;
+}
+
 sub head {
     my ( $self, $title ) = @_;
     my $t = HTML::Template->new( filename => 't/head.html' );
@@ -200,6 +209,24 @@ sub foot {
     my $f = HTML::Template->new( filename => 't/foot.html' );
 
     return $f->output();
+}
+
+sub register {
+    my ( $self, $error ) = @_;
+
+    my $n = HTML::Template->new( filename => 't/register.html' );
+    $n->param( ERROR => $error );
+
+    return $n->output();
+}
+
+sub config {
+    my ( $self, $error ) = @_;
+
+    my $n = HTML::Template->new( filename => 't/config.html' );
+    $n->param( ERROR => $error );
+
+    return $n->output();
 }
 
 1;

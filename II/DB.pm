@@ -1,19 +1,25 @@
 package II::DB;
 
+use strict;
 use SQL::Abstract;
 use DBI;
 
+use Config::Tiny;
 use Data::Dumper;
 
 sub new {
     my $class = shift;
+    my $conf = Config::Tiny->read('config.ini');
 
-    my $dbh = DBI->connect( "dbi:SQLite:dbname=/var/cache/iiplc/ii.sql", "", "" );
+
+    my $dbh = DBI->connect( "dbi:SQLite:dbname=".$conf->{server}{iidb}, "", "" ) or die "$!";
+    my $udbh = DBI->connect( "dbi:SQLite:dbname=".$conf->{server}{userdb}, "", "" ) or die "$!";
     my $sql = SQL::Abstract->new();
 
     my $self = {
         _dbh => $dbh,
         _sql => $sql,
+        _udbh => $udbh,
     };
 
     bless $self, $class;
@@ -311,7 +317,7 @@ sub select_new {
 
     my $sth = $dbh->prepare($q);
     $sth->execute();
-    my ( $from, $to, $subg, $time, $echo, $post );
+    my ( $from, $to, $subg, $time, $echo, $post, $h );
 
     while ( my @hash = $sth->fetchrow_array() ) {
         ( $from, $to, $subg, $time, $echo, $post, $h ) = @hash;
@@ -329,5 +335,42 @@ sub select_new {
 
     return $data;
 }
+
+sub add_user
+{
+    my ( $self, %user ) = @_;
+    my $dbh = $self->{_udbh};
+    
+    my $q = "INSERT INTO users ('login', 'pwhash', 'node', 'auth')".
+        " VALUES (?, ?, ?, ?)";
+    my $sth = $dbh->prepare($q) or die $dbh->errstr;
+    return $sth->execute ($user{login}, $user{pwhash}, $user{node}, $user{auth});
+}
+
+sub check_user
+{
+    my ( $self, $user ) = @_;
+    my $dbh = $self->{_udbh};
+    
+    my $sth = $dbh->prepare('SELECT login FROM users WHERE login=?') or die "$!";
+    $sth->execute ($user);
+    my @res = $sth->fetchrow_array;
+    return 1 if (@res);
+    return 0;
+}
+
+sub auth_user
+{
+    my ( $self, $login, $hash ) = @_;
+    my $dbh = $self->{_udbh};
+    
+    my $sth = $dbh->prepare("SELECT * FROM users WHERE login=? AND pwhash=?") or die "$!";
+    $sth->execute ($login, $hash);
+    if ( my @res = $sth->fetchrow_array() ) {
+        return 1;
+    } 
+    return 0;
+}
+
 
 1;

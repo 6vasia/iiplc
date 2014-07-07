@@ -1,0 +1,11 @@
+<div class=register>
+    <div class=form>
+        <TMPL_IF NAME="ERROR"><div class="error"><TMPL_VAR NAME="ERROR"></div></TMPL_IF>
+        <form action='/reg' method='POST'>
+            <div class="field"><label class="label" for="email">E-mail: </label><input type="text" name="email", id="email" /></div>
+            <div class="field"><label class="label" for="pass1">Пароль: </label><input type="password" name="pass1", id="pass1" /></div>
+            <div class="field"><label class="label" for="pass2">Пароль еще раз: </label><input type="password" name="pass2", id="pass2" /></div>
+            <input type='submit' value='Регистрация'>
+        </form>
+    </div>
+</div>

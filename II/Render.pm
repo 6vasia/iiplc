@@ -136,19 +136,17 @@ sub index {
     my @hashes = $db->select_index(50);
 
     # Render header
-    my $render = $t->head('ii :: Лента');
-    $render .= $t->index($echoareas);
-
+    my $index = $t->index($echoareas);
+    my $content;
     while (<@hashes>) {
         my $message = $_;
         my $data    = $db->select_new($message);
 
         # Render post
-        $render .= $t->post($data);
+        $content .= $t->post($data);
     }
-    $render .= $t->foot();
-
-    return $render;
+    
+    return $t->main('ii :: Лента', $index.$content);
 }
 
 # Messages from user
@@ -227,6 +225,45 @@ sub new_mes {
     # else {
     #     $render .= "<p>Новых сообщений нет</p>";
     # }
+    $render .= $t->foot();
+
+    return $render;
+}
+
+sub login {
+    my ( $self, $form ) = @_;
+    my $db        = $self->{_db};
+    my $t         = $self->{_template};
+
+    # Render header
+    my $render = $t->head('ii :: Вход');
+    $render .= $form;
+    $render .= $t->foot();
+
+    return $render;
+}
+
+sub register {
+    my ( $self, $error ) = @_;
+    my $db        = $self->{_db};
+    my $t         = $self->{_template};
+
+    # Render header
+    my $render = $t->head('ii :: Регистрация');
+    $render .= $t->register($error);
+    $render .= $t->foot();
+
+    return $render;
+}
+
+sub config {
+    my ( $self, $error ) = @_;
+    my $db        = $self->{_db};
+    my $t         = $self->{_template};
+
+    # Render header
+    my $render = $t->head('ii :: Настройки');
+    $render .= $t->config($error);
     $render .= $t->foot();
 
     return $render;
