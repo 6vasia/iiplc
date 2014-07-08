@@ -1,6 +1,11 @@
+# Copyright (c) 2014, Vasiliy Vylegzhanin <v.gadfly@gmail.com>
+# Copyright (c) 2014, Difrex <difrex.punk@gmail.com>
+# Some rights reserved.
+
 package II::Get;
 use LWP::UserAgent;
 use HTTP::Request;
+use Encode;
 
 use II::DB;
 use II::Enc;
@@ -14,7 +19,6 @@ sub new {
     $ua->agent("iiplc/0.1rc1");
     my $db   = II::DB->new();
     my $self = {
-        _config => shift,
         _ua     => $ua,
         _db     => $db,
     };
@@ -23,22 +27,19 @@ sub new {
     return $self;
 }
 
-sub get_echo {
-    my ($self)    = @_;
-    my $config    = $self->{_config};
-    my $echoareas = $config->{echoareas};
-    my $host      = $config->{host};
+sub get_echoes {
+    my ($self, $host)    = @_;
     my $ua        = $self->{_ua};
     my $db        = $self->{_db};
-
+    
+    my @echoareas = $db->echoareas($host);
     my $echo_url = 'u/e/';
     my $msg_url  = 'u/m/';
-
-    my $msgs;
+    
     my $base64;
     my @messages_hash;
-    foreach my $echo (@$echoareas) {
-
+    foreach my $echo (@echoareas) {
+        print STDERR "fetch $echo from $host\n";
         # Get echo message hashes
         my $req_echo = HTTP::Request->new( GET => "$host$echo_url$echo" );
         my $res_echo = $ua->request($req_echo);
@@ -54,14 +55,8 @@ sub get_echo {
                             echo => $echo,
                             hash => $_,
                         };
-                        my %e_write = (
-                            echo => $echo,
-                            hash => $_,
-                        );
-
                         # Write new echo message
-                        $db->write_echo(%e_write);
-                        $msgs .= $_ . "\n";
+                        $db->write_echo(%$echo_hash);
                         push( @new, $echo_hash );
                     }
                 }
@@ -71,21 +66,22 @@ sub get_echo {
             print STDERR $res_echo->status_line, "\n";
         }
         $db->commit();
-
+        
         # Get messages
         my @msg_con;
         my $count = 0;
         while ( $count < @new ) {
-            my $new_messages_url = "$host$msg_url" . $new[$count]->{hash};
+            my $request = @new - $count > 50 ? 50 : @new - $count;
+            my $new_messages_url = "$host$msg_url" . join ('/', map {$_->{hash}} @new[$count..$count+$request-1]) ;
             my $req_msg = HTTP::Request->new( GET => $new_messages_url );
             my $res_msg = $ua->request($req_msg);
             if ( $res_msg->is_success() ) {
-                push( @msg_con, $res_msg->content() );
+                push @msg_con, split ("\n", $res_msg->content() );
             }
             else {
-                print $res_msg->status_line, "\n";
+                print STDERR $res_msg->status_line, "\n";
             }
-            $count++;
+            $count+=$request;
         }
 
         # Populate hash
@@ -100,56 +96,27 @@ sub get_echo {
             }
         }
     }
-
-    my $new_messages
-        = "<!DOCTYPE html><meta charset=utf8><body><h1>Новые сообщения</h1>\n";
-    if ( defined($msgs) ) {
+    if ( @messages_hash ) {
 
         # Begin transaction
-        print localtime() . ": writing messages\n";
+        print STDERR localtime() . ": writing messages\n";
         $db->begin();
 
         my $c = 0;
         while ( $c < @messages_hash ) {
             my $mes_hash = $messages_hash[$c]->{hash};
             my $text = II::Enc->decrypt( $messages_hash[$c]->{base64} );
-
-            open my $m, "<", \$text
-                or die "Cannot open message: $!\n";
-
-            my @mes;
-            while (<$m>) {
-                push( @mes, $_ );
-            }
-            close $m;
-
-            my $count = 7;
-            my $post;
-            while ( $count < @mes ) {
-                $post .= $mes[$count];
-                $count++;
-            }
-
-            chomp( $mes[2] );
-            chomp( $mes[1] );
-            chomp( $mes[3] );
-            chomp( $mes[5] );
-            chomp( $mes[6] );
-
-            # Make data
-            my %data = (
-                hash      => $mes_hash,
-                time      => $mes[2],
-                echo      => $mes[1],
-                from_user => $mes[3],
-                to_user   => $mes[5],
-                subg      => $mes[6],
-                post      => "$post",
-                read      => 0,
+            my @parts = map {chomp;$_} split ("\n", $text);
+            $db->write(
+                hash    => $mes_hash,
+                time    => $parts[2],
+                echo    => $parts[1],
+                from    => decode_utf8($parts[3]),
+                to      => decode_utf8($parts[5]),
+                subj    => decode_utf8($parts[6]),
+                post    => decode_utf8(join ("\n", @parts[8..$#parts])),
+                read    => 0,
             );
-
-            # Write message to DB
-            $db->write(%data);
             $c++;
         }
 
@@ -158,6 +125,18 @@ sub get_echo {
         print localtime() . ": messages writed to DB!\n";
     }
     return $msgs;
+
+}
+
+sub fetch_all
+{
+    my ($self) = @_;
+    
+    my @hosts = $self->{_db}->hosts;
+    for my $h (@hosts) {
+        $self->{_db}->open($h);
+        $self->get_echoes($h);
+    }
 }
 
 1;

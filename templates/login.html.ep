@@ -1,0 +1,13 @@
+% layout 'default';
+% title 'ii :: Вход';
+<%= form_for login => begin %>
+<% if (param 'email') { %>
+<b><%= stash 'message' %></b><br>
+<% } %>
+E-mail:<br>
+<%= text_field 'email' %><br>
+Пароль:<br>
+<%= password_field 'pass' %><br>
+<%= submit_button 'Login' %>
+<% end %>
+

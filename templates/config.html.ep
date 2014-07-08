@@ -1,0 +1,12 @@
+% layout 'default';
+% title 'ii :: Параметры';
+<%= form_for config => (method => 'POST') => begin %>
+<%= hidden_field 'update' => 1 %>
+URL ноды:<br>
+<%= text_field 'node' => $user->{node} %><br>
+Строка авторизации:<br>
+<%= text_field 'auth' => $user->{auth} %><br>
+Подписки:<br>
+<%= text_area 'sub' => $user->{sub} %><br>
+<%= submit_button 'Сохранить' %>
+<% end %>

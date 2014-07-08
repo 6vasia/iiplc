@@ -1,23 +1,34 @@
-#!/usr/bin/perl
-# Copyright © 2014 Difrex <difrex.punk@gmail.com>
-# This work is free. You can redistribute it and/or modify it under the
-# terms of the Do What The Fuck You Want To Public License, Version 2,
-# as published by Sam Hocevar. See the COPYING file for more details.
-
-# This program is free software. It comes without any warranty, to
-# the extent permitted by applicable law. You can redistribute it
-# and/or modify it under the terms of the Do What The Fuck You Want
-# To Public License, Version 2, as published by Sam Hocevar. See
-# http://www.wtfpl.net/ for more details.
+#!/usr/bin/env perl
+# Copyright (c) 2014, Vasiliy Vylegzhanin <v.gadfly@gmail.com>
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer. 
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+# ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+#(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use strict;
 use warnings;
+use utf8;
 
-use Plack::Builder;
-use Plack::Request;
-use Plack::Response;
+use Mojolicious::Lite;
+use Config::Tiny;
 
-use II::Config;
 use II::Get;
 use II::Send;
 use II::Render;
@@ -28,27 +39,85 @@ use Digest::SHA1 qw(sha1_hex);
 # Debug
 use Data::Dumper;
 
-my $c      = II::Config->new();
-my $config = $c->load();
+my $config = Config::Tiny->read('config.ini');
 
-my $GET    = II::Get->new($config);
-my $render = II::Render->new();
+my $GET    = II::Get->new;
+my $render = II::Render->new;
+my $db = II::DB->new;
 
-sub echo
-{
-    my $env = shift;
-    unless ($env->{'psgix.session'}{user_id}) {
-        return [ 302, [ 'Location' => '/login' ], [] ]
+under '/' => sub {
+    my $self = shift;
+    my $uid = $self->session('uid');
+    
+    if ($uid){
+        my $user = $db->user($uid);
+        $db->open($user->{node});
+        return 1;
+    }
+    return 1 if $self->url_for->path =~ m|/login|;
+    return $self->redirect_to('login');
+};
+
+get '/' => sub {
+    my $self = shift;
+    $self->render;
+} => 'index';
+
+get '/login' => sub {
+    my $self = shift;
+    
+    my $email = $self->param('email') || '';
+    my $pass = $self->param('pass') || '';
+    
+    if (my $uid = $db->auth_user($email, sha1_hex($pass))){
+        $self->session(uid => $uid);
+        return $self->redirect_to('index');
     }
     
-    my $req = Plack::Request->new($env);
+    $self->render;
+} => 'login';
 
-    my $echo = $req->param('echo');
-    my $view = $req->param('view');
+get '/logout' => sub {
+    my $self = shift;
+    $self->session(expires => 1);
+    $self->redirect_to('index');
+} => 'logout';
 
-    my $echo_messages = $render->echo_mes( $echo, $view );
+any '/config' => sub {
+    my $self = shift;
 
-    return [ 200, [ 'Content-type' => 'text/html' ], ["$echo_messages"], ];
+    my $user = $db->user($self->session('uid'));
+    if ($self->param('update')){
+        my $upd = {
+                id => $self->session('uid'),
+                node => $self->param('node'),
+                auth => $self->param('auth'),
+                sub => [map {s/^\s+//;s/\s+$//;$_} split("\n", $self->param('sub'))]
+            };
+        $user = $db->update_user($upd);
+        $db->open($user->{node});
+    }
+    $user->{sub} = join ("\n", @{$user->{sub}});
+    $self->stash (user => $user);
+    $self->render;
+} => 'config';
+
+get '/echo/#area' => sub {
+    my $self = shift;
+    
+    my $area = $self->param('area');
+    my $view = $self->param('view');
+
+    my @messages = $db->echoes($self->session('uid'), $area);
+    
+    $self->stash( messages => \@messages);
+    $self->render;
+} => 'echo';
+
+get '/get' => sub {
+    my $self = shift;
+    $GET->fetch_all;
+    $self->redirect_to('index');
 };
 
 sub thread
@@ -68,7 +137,7 @@ sub thread
     return [ 200, [ 'Content-type' => 'text/html' ], ["$thread"], ];
 };
 
-sub get
+sub get_mesg
 {
     my $env = shift;
     unless ($env->{'psgix.session'}{user_id}) {
@@ -108,7 +177,7 @@ sub tree
     return [ 200, [ 'Content-type' => 'text/html' ], ['Дерево'], ];
 };
 
-sub new
+sub new_mesg
 {
     my $env = shift;
     unless ($env->{'psgix.session'}{user_id}) {
@@ -289,27 +358,5 @@ sub config
     return [ 200, [ 'Content-type' => 'text/html' ], [$conf_form], ];
 }
 
-builder {
-    enable 'Session';
-    enable 'Auth::Form', no_login_page => 1, authenticator => sub { 
-        my ($login, $passwd, $env) = @_;
-        my $db = II::DB->new();
-        return $db->auth_user($login, sha1_hex($passwd));
-    };
-    enable 'Static', path => '^/static/', root => './';
-    mount '/'       => \&root;
-    mount '/e'      => \&echo;
-    mount '/s'      => \&thread;
-    mount '/u'      => \&user;
-    mount '/me'     => \&me;
-    mount '/tree'   => \&tree;
-    mount '/get'    => \&get;
-    mount '/send'   => \&send_mesg;
-    mount '/enc'    => \&enc;
-    mount '/out'    => \&out;
-    mount '/push'   => \&push_mesg;
-    mount '/new'    => \&new;
-    mount '/login'  => \&login;
-    mount '/reg'    => \&register;
-    mount '/config' => \&config;
-};
+#app->secrets (['some secret passphrase']);
+app->start;

@@ -1,3 +1,7 @@
+# Copyright (c) 2014, Vasiliy Vylegzhanin <v.gadfly@gmail.com>
+# Copyright (c) 2014, Difrex <difrex.punk@gmail.com>
+# Some rights reserved.
+
 package II::DB;
 
 use strict;
@@ -8,22 +12,68 @@ use Config::Tiny;
 use Data::Dumper;
 
 sub new {
-    my $class = shift;
+    my ( $class, $uid ) = @_;
     my $conf = Config::Tiny->read('config.ini');
 
-
-    my $dbh = DBI->connect( "dbi:SQLite:dbname=".$conf->{server}{iidb}, "", "" ) or die "$!";
-    my $udbh = DBI->connect( "dbi:SQLite:dbname=".$conf->{server}{userdb}, "", "" ) or die "$!";
+    my $udbh = DBI->connect( "dbi:SQLite:dbname=".$conf->{server}{userdb}, "", "", {sqlite_unicode => 1} ) or die "$!";
     my $sql = SQL::Abstract->new();
 
     my $self = {
-        _dbh => $dbh,
         _sql => $sql,
         _udbh => $udbh,
     };
 
     bless $self, $class;
     return $self;
+}
+
+sub open
+{
+    my ( $self, $host ) = @_;
+    $host = 'dummy' unless $host;
+    
+    $host =~ s@^http://@@;
+    $host =~ s@\?.*$@@;
+    $host =~ s@[/.]@_@g;
+
+    my $conf = Config::Tiny->read('config.ini');
+    my $dbh = DBI->connect( "dbi:SQLite:dbname=".$conf->{server}{dbdir}.'/'.$host.'.db', "", "", {sqlite_unicode => 1} ) or die "$!";
+    
+    my $create = qq(
+      CREATE TABLE IF NOT EXISTS 'messages' 
+        ('id' INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+        'echo' VARCHAR(45),
+        'from' TEXT,
+        'to' TEXT,
+        'subj' VARCHAR(50),
+        'time' TIMESTAMP,
+        'hash' VARCHAR(30),
+        'read' INT,
+        'post' TEXT);
+    );
+    $dbh->do($create) or die "$!";
+    $create = qq(
+      CREATE TABLE IF NOT EXISTS 'output' 
+        ('id' INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+        'echo' VARCHAR(45),
+        'from' TEXT,
+        'to' TEXT,
+        'subj' VARCHAR(50),
+        'time' TIMESTAMP,
+        'hash' VARCHAR(30),
+        'send' INT,
+        'post' TEXT,
+        base64 TEXT);
+    );
+    $dbh->do($create) or die "$!";
+    $create = qq(
+      CREATE TABLE IF NOT EXISTS 'echo' 
+        ('echo' VARCHAR(45),
+        'hash' VARCHAR(32)
+        );
+    );
+    $dbh->do($create) or die "$!";
+    $self->{_dbh} = $dbh;
 }
 
 sub check_hash {
@@ -47,28 +97,23 @@ sub check_hash {
 
 sub begin {
     my ($self) = @_;
-    my $dbh = $self->{_dbh};
-
-    # Begin transaction
-    $dbh->do('BEGIN');
+    $self->{_udbh}->do('BEGIN');
+    $self->{_dbh}->do('BEGIN');
 }
 
 sub commit {
     my ($self) = @_;
-    my $dbh = $self->{_dbh};
-
-    # Commmit transaction
-    $dbh->do('COMMIT');
+    $self->{_udbh}->do('COMMIT');
+    $self->{_dbh}->do('COMMIT');
 }
 
 sub write_echo {
     my ( $self, %data ) = @_;
-    my $dbh = $self->{_dbh};
     my $sql = $self->{_sql};
 
     my ( $stmt, @bind ) = $sql->insert( 'echo', \%data );
 
-    my $sth = $dbh->prepare($stmt);
+    my $sth = $self->{_dbh}->prepare($stmt);
     $sth->execute(@bind);
     $sth->finish();
 }
@@ -98,13 +143,15 @@ sub update_out {
 sub write {
     my ( $self, %data ) = @_;
     my $dbh = $self->{_dbh};
-    my $sql = $self->{_sql};
-
-    my ( $stmt, @bind ) = $sql->insert( 'messages', \%data );
-
+    print STDERR Dumper \%data;
+    
+    my $stmt = "INSERT INTO 'messages' (".
+        join (',', map {"'$_'"} keys %data).
+        ") VALUES (".
+        join (',', ("?")x(scalar keys %data)).
+        ");";
     my $sth = $dbh->prepare($stmt);
-    $sth->execute(@bind);
-    $sth->finish();
+    $sth->execute(values %data);
 }
 
 sub select_out {
@@ -112,18 +159,18 @@ sub select_out {
     my $dbh = $self->{_dbh};
 
     my $q
-        = "select from_user, to_user, subg, time, echo, post, hash, base64 from output where send=0";
+        = "select from, to, subj, time, echo, post, hash, base64 from output where send=0";
 
     my $sth = $dbh->prepare($q);
     $sth->execute();
 
     my @posts;
     while ( my @hash = $sth->fetchrow_array() ) {
-        my ( $from, $to, $subg, $time, $echo, $post, $h, $base64 ) = @hash;
+        my ( $from, $to, $subj, $time, $echo, $post, $h, $base64 ) = @hash;
         my $data = {
             from   => "$from",
             to     => "$to",
-            subg   => "$subg",
+            subj   => "$subj",
             time   => $time,
             echo   => "$echo",
             post   => "$post",
@@ -154,7 +201,7 @@ sub select_index {
     return @hashes;
 }
 
-sub select_subg {
+sub select_subj {
     my ( $self, $echo ) = @_;
 
 }
@@ -165,18 +212,18 @@ sub select_user {
     my $dbh = $self->{_dbh};
 
     my $q
-        = "select from_user, to_user, subg, time, echo, post, hash from messages where from_user='$user' order by time desc";
+        = "select from, to, subj, time, echo, post, hash from messages where from='$user' order by time desc";
 
     my $sth = $dbh->prepare($q);
     $sth->execute();
 
     my @posts;
     while ( my @hash = $sth->fetchrow_array() ) {
-        my ( $from, $to, $subg, $time, $echo, $post, $h ) = @hash;
+        my ( $from, $to, $subj, $time, $echo, $post, $h ) = @hash;
         my $data = {
             from => "$from",
             to   => "$to",
-            subg => "$subg",
+            subj => "$subj",
             time => $time,
             echo => "$echo",
             post => "$post",
@@ -197,18 +244,18 @@ sub from_me {
     # print "NICK: $nick\n";
 
     my $q
-        = "select from_user, to_user, subg, time, echo, post, hash from messages where from_user='$nick'";
+        = "select from, to, subj, time, echo, post, hash from messages where from='$nick'";
 
     my $sth = $dbh->prepare($q);
     $sth->execute();
 
     my @posts;
     while ( my @hash = $sth->fetchrow_array() ) {
-        my ( $from, $to, $subg, $time, $echo, $post, $h ) = @hash;
+        my ( $from, $to, $subj, $time, $echo, $post, $h ) = @hash;
         my $data = {
             from => "$from",
             to   => "$to",
-            subg => "$subg",
+            subj => "$subj",
             time => $time,
             echo => "$echo",
             post => "$post",
@@ -221,22 +268,22 @@ sub from_me {
 }
 
 sub thread {
-    my ( $self, $subg, $echo ) = @_;
+    my ( $self, $subj, $echo ) = @_;
     my $dbh = $self->{_dbh};
 
     my $q
-        = "select from_user, to_user, subg, time, echo, post, hash from messages where echo='$echo' and subg like '%$subg%' order by time";
+        = "select from, to, subj, time, echo, post, hash from messages where echo='$echo' and subj like '%$subj%' order by time";
 
     my $sth = $dbh->prepare($q);
     $sth->execute();
 
     my @posts;
     while ( my @hash = $sth->fetchrow_array() ) {
-        my ( $from, $to, $subg, $time, $echo, $post, $h ) = @hash;
+        my ( $from, $to, $subj, $time, $echo, $post, $h ) = @hash;
         my $data = {
             from => "$from",
             to   => "$to",
-            subg => "$subg",
+            subj => "$subj",
             time => $time,
             echo => "$echo",
             post => "$post",
@@ -249,30 +296,21 @@ sub thread {
 }
 
 sub echoes {
-    my ( $self, $echo ) = @_;
+    my ( $self, $uid, $echo ) = @_;
     my $dbh = $self->{_dbh};
 
     my $q
-        = "select from_user, to_user, subg, time, echo, post, hash from messages where echo='$echo' order by time desc";
+        = "select `from`, `to`, `subj`, `time`, `echo`, `post`, `hash` from `messages` where echo=? order by time desc";
 
     my $sth = $dbh->prepare($q);
-    $sth->execute();
+    $sth->execute($echo);
 
     my @posts;
-    while ( my @hash = $sth->fetchrow_array() ) {
-        my ( $from, $to, $subg, $time, $echo, $post, $h ) = @hash;
-        my $data = {
-            from => "$from",
-            to   => "$to",
-            subg => "$subg",
-            time => $time,
-            echo => "$echo",
-            post => "$post",
-            h    => $h,
-        };
-        push( @posts, $data );
+    while ( my $hash = $sth->fetchrow_hashref() ) {
+        push( @posts, $hash );
     }
-
+    
+    print STDERR Dumper \@posts;
     return @posts;
 }
 
@@ -285,18 +323,18 @@ sub to_me {
     # print "NICK: $nick\n";
 
     my $q
-        = "select from_user, to_user, subg, time, echo, post, hash from messages where to_user='$nick'";
+        = "select from, to, subj, time, echo, post, hash from messages where to='$nick'";
 
     my $sth = $dbh->prepare($q);
     $sth->execute();
 
     my @posts;
     while ( my @hash = $sth->fetchrow_array() ) {
-        my ( $from, $to, $subg, $time, $echo, $post, $h ) = @hash;
+        my ( $from, $to, $subj, $time, $echo, $post, $h ) = @hash;
         my $data = {
             from => "$from",
             to   => "$to",
-            subg => "$subg",
+            subj => "$subj",
             time => $time,
             echo => "$echo",
             post => "$post",
@@ -313,20 +351,20 @@ sub select_new {
     my $dbh = $self->{_dbh};
 
     my $q
-        = "select from_user, to_user, subg, time, echo, post, hash from messages where hash='$msg'";
+        = "select from, to, subj, time, echo, post, hash from messages where hash='$msg'";
 
     my $sth = $dbh->prepare($q);
     $sth->execute();
-    my ( $from, $to, $subg, $time, $echo, $post, $h );
+    my ( $from, $to, $subj, $time, $echo, $post, $h );
 
     while ( my @hash = $sth->fetchrow_array() ) {
-        ( $from, $to, $subg, $time, $echo, $post, $h ) = @hash;
+        ( $from, $to, $subj, $time, $echo, $post, $h ) = @hash;
     }
 
     my $data = {
         from => "$from",
         to   => "$to",
-        subg => "$subg",
+        subj => "$subj",
         time => $time,
         echo => "$echo",
         post => "$post",
@@ -352,11 +390,11 @@ sub check_user
     my ( $self, $user ) = @_;
     my $dbh = $self->{_udbh};
     
-    my $sth = $dbh->prepare('SELECT login FROM users WHERE login=?') or die "$!";
+    my $sth = $dbh->prepare('SELECT id FROM users WHERE login=?') or die "$!";
     $sth->execute ($user);
     my @res = $sth->fetchrow_array;
-    return 1 if (@res);
-    return 0;
+    return $res[0] if (@res);
+    return undef;
 }
 
 sub auth_user
@@ -364,13 +402,80 @@ sub auth_user
     my ( $self, $login, $hash ) = @_;
     my $dbh = $self->{_udbh};
     
-    my $sth = $dbh->prepare("SELECT * FROM users WHERE login=? AND pwhash=?") or die "$!";
+    my $sth = $dbh->prepare("SELECT id FROM users WHERE login=? AND pwhash=?") or die "$!";
     $sth->execute ($login, $hash);
     if ( my @res = $sth->fetchrow_array() ) {
-        return 1;
+        return $res[0];
     } 
-    return 0;
+    return undef;
 }
 
+sub update_user
+{
+    my ( $self, $user ) = @_;
+    my $dbh = $self->{_udbh};
 
+    $self->begin;
+
+    my $sq = $dbh->prepare ("UPDATE users SET node=?, auth=? WHERE id=?");
+    $sq->execute($user->{node}, $user->{auth}, $user->{id});
+    
+    $sq = $dbh->prepare ('DELETE FROM user_sub WHERE userid=?');
+    $sq->execute($user->{id});
+    
+    $sq = $dbh->prepare ('INSERT INTO user_sub (userid, areaname) VALUES (?, ?)');
+    for my $ea (@{$user->{sub}}) {
+        $sq->execute($user->{id}, $ea);
+    }
+    $self->commit;
+    
+    return $self->user($user->{id});
+}
+
+sub user
+{
+    my ( $self, $uid ) = @_;
+    my $dbh = $self->{_udbh};
+
+    my $sq = $dbh->prepare ("SELECT * from users WHERE id=?");
+    $sq->execute($uid);
+    my $user = $sq->fetchrow_hashref();
+    $sq = $dbh->prepare('SELECT areaname FROM user_sub WHERE userid=?');
+    $sq->execute($uid);
+    $user->{sub} = [map {$_->[0]} @{$sq->fetchall_arrayref()}];
+    return $user;
+}
+
+sub users
+{
+    my ( $self ) = @_;
+    my $dbh = $self->{_udbh};
+
+    my $sq = $dbh->do ("SELECT * from users");
+    die Dumper $sq->fetchall_hashref();
+}
+
+sub echoareas
+{
+    my ( $self, $host ) = @_;
+    my $db = $self->{_udbh};
+    
+    my $sq = $db->prepare ('SELECT DISTINCT user_sub.areaname FROM user_sub INNER JOIN users ON user_sub.userid = users.id WHERE users.node=?');
+    $sq->execute($host);
+    my @res = (map {$_->[0]} @{$sq->fetchall_arrayref()});
+
+    return @res;
+}
+
+sub hosts
+{
+    my ( $self, $host ) = @_;
+    my $db = $self->{_udbh};
+    
+    my $sq = $db->prepare ('SELECT DISTINCT node FROM users');
+    $sq->execute;
+    my @res = (map {$_->[0]} @{$sq->fetchall_arrayref()});
+    
+    return @res;
+}
 1;
