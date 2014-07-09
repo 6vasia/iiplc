@@ -5,7 +5,6 @@
 package II::DB;
 
 use strict;
-use SQL::Abstract;
 use DBI;
 
 use Config::Tiny;
@@ -16,15 +15,12 @@ sub new {
     my $conf = Config::Tiny->read('config.ini');
 
     my $udbh = DBI->connect( "dbi:SQLite:dbname=".$conf->{server}{userdb}, "", "", {sqlite_unicode => 1} ) or die "$!";
-    my $sql = SQL::Abstract->new();
 
     my $self = {
-        _sql => $sql,
         _udbh => $udbh,
     };
 
-    bless $self, $class;
-    return $self;
+    return bless $self, $class;
 }
 
 sub open
@@ -42,12 +38,12 @@ sub open
     my $create = qq(
       CREATE TABLE IF NOT EXISTS 'messages' 
         ('id' INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-        'echo' VARCHAR(45),
-        'from' TEXT,
+        'echo' VARCHAR(45) NOT NULL,
+        'from' TEXT NOT NULL,
         'to' TEXT,
         'subj' VARCHAR(50),
-        'time' TIMESTAMP,
-        'hash' VARCHAR(30),
+        'time' TIMESTAMP NOT NULL,
+        'hash' VARCHAR(30) NOT NULL,
         'read' INT,
         'post' TEXT);
     );
@@ -55,15 +51,13 @@ sub open
     $create = qq(
       CREATE TABLE IF NOT EXISTS 'output' 
         ('id' INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-        'echo' VARCHAR(45),
-        'from' TEXT,
-        'to' TEXT,
+        'echo' VARCHAR(45) NOT NULL,
+        'from' INT NOT NULL,
+        'to' TEXT NOT NULL,
         'subj' VARCHAR(50),
-        'time' TIMESTAMP,
-        'hash' VARCHAR(30),
-        'send' INT,
+        'sent' INT,
         'post' TEXT,
-        base64 TEXT);
+        base64 TEXT NOT NULL);
     );
     $dbh->do($create) or die "$!";
     $create = qq(
@@ -80,19 +74,14 @@ sub check_hash {
     my ( $self, $hash, $echo ) = @_;
     my $dbh = $self->{_dbh};
 
-    my $q   = "select hash from echo where hash='$hash' and echo='$echo'";
+    my $q   = "select hash from messages where hash=? and echo=?";
     my $sth = $dbh->prepare($q);
-    $sth->execute();
+    $sth->execute($hash, $echo);
 
-    while ( my @h = $sth->fetchrow_array() ) {
-        my ($base_hash) = @h;
-        if ( $hash eq $base_hash ) {
+    if ( my @h = $sth->fetchrow_array() ) {
             return 1;
-        }
-        else {
-            return 0;
-        }
     }
+    return 0;
 }
 
 sub begin {
@@ -109,41 +98,45 @@ sub commit {
 
 sub write_echo {
     my ( $self, %data ) = @_;
-    my $sql = $self->{_sql};
-
-    my ( $stmt, @bind ) = $sql->insert( 'echo', \%data );
-
-    my $sth = $self->{_dbh}->prepare($stmt);
-    $sth->execute(@bind);
-    $sth->finish();
+    my $dbh = $self->{_dbh};
+    
+    my $stmt = "INSERT INTO 'messages' (".
+        join (',', map {"'$_'"} keys %data).
+        ") VALUES (".
+        join (',', ("?")x(scalar keys %data)).
+        ");";
+    my $sth = $dbh->prepare($stmt);
+    $sth->execute(values %data);
 }
 
 sub write_out {
     my ( $self, %data ) = @_;
+    
+    my $u = $self->user($data{from});
+    $self->open($u->{node});
     my $dbh = $self->{_dbh};
-    my $sql = $self->{_sql};
 
-    my ( $stmt, @bind ) = $sql->insert( 'output', \%data );
-
+    my $stmt = "INSERT INTO 'output' (".
+        join (',', map {"'$_'"} keys %data).
+        ") VALUES (".
+        join (',', ("?")x(scalar keys %data)).
+        ");";
     my $sth = $dbh->prepare($stmt);
-    $sth->execute(@bind);
-
-    print "Message writed to DB!\n";
+    $sth->execute(values %data);
 }
 
 sub update_out {
-    my ( $self, $hash ) = @_;
+    my ( $self, $id ) = @_;
     my $dbh = $self->{_dbh};
 
-    my $q   = "update output set send=1 where hash='$hash'";
+    my $q   = "update output set sent=1 where id=?";
     my $sth = $dbh->prepare($q);
-    $sth->execute();
+    $sth->execute($id);
 }
 
 sub write {
     my ( $self, %data ) = @_;
     my $dbh = $self->{_dbh};
-    print STDERR Dumper \%data;
     
     my $stmt = "INSERT INTO 'messages' (".
         join (',', map {"'$_'"} keys %data).
@@ -155,50 +148,46 @@ sub write {
 }
 
 sub select_out {
+    my ($self, $uid) = @_;
+    my $dbh = $self->{_dbh};
+
+    my $q = "select * from 'output' where `sent`=0 and `from`=?";
+    my $sth = $dbh->prepare($q);
+    $sth->execute($uid);
+
+    my @posts;
+    while ( my $m = $sth->fetchrow_hashref() ) {
+        push( @posts, $m );
+    }
+    return @posts;
+}
+
+sub host_out {
     my ($self) = @_;
     my $dbh = $self->{_dbh};
 
-    my $q
-        = "select from, to, subj, time, echo, post, hash, base64 from output where send=0";
-
+    my $q = "select `id`, `from`, `base64` from 'output' where `sent`=0";
     my $sth = $dbh->prepare($q);
-    $sth->execute();
+    $sth->execute;
 
     my @posts;
-    while ( my @hash = $sth->fetchrow_array() ) {
-        my ( $from, $to, $subj, $time, $echo, $post, $h, $base64 ) = @hash;
-        my $data = {
-            from   => "$from",
-            to     => "$to",
-            subj   => "$subj",
-            time   => $time,
-            echo   => "$echo",
-            post   => "$post",
-            hash   => $h,
-            base64 => $base64,
-        };
-        push( @posts, $data );
+    while ( my $m = $sth->fetchrow_hashref() ) {
+        push( @posts, $m );
     }
-
     return @posts;
 }
 
 sub select_index {
-    my ( $self, $limit ) = @_;
+    my ( $self, $uid, $limit ) = @_;
     my $dbh = $self->{_dbh};
 
-    my $q = "select hash from messages order by time desc limit $limit";
+    my @sub = @{$self->user($uid)->{sub}};
+    my $q = "select hash from messages WHERE echo IN (".join(',', ('?')x@sub).") order by time desc limit ?";
 
     my $sth = $dbh->prepare($q);
-    $sth->execute();
+    $sth->execute(@sub, $limit);
 
-    my @hashes;
-    while ( my @hash = $sth->fetchrow_array() ) {
-        my ($h) = @hash;
-        push( @hashes, $h );
-    }
-
-    return @hashes;
+    return (map {$_->[0]} @{$sth->fetchall_arrayref()});
 }
 
 sub select_subj {
@@ -212,7 +201,7 @@ sub select_user {
     my $dbh = $self->{_dbh};
 
     my $q
-        = "select from, to, subj, time, echo, post, hash from messages where from='$user' order by time desc";
+        = "select from, to, subj, time, echo, post, hash from messages where `from`='$user' order by time desc";
 
     my $sth = $dbh->prepare($q);
     $sth->execute();
@@ -244,7 +233,7 @@ sub from_me {
     # print "NICK: $nick\n";
 
     my $q
-        = "select from, to, subj, time, echo, post, hash from messages where from='$nick'";
+        = "select from, to, subj, time, echo, post, hash from messages where `from`='$nick'";
 
     my $sth = $dbh->prepare($q);
     $sth->execute();
@@ -300,7 +289,7 @@ sub echoes {
     my $dbh = $self->{_dbh};
 
     my $q
-        = "select `from`, `to`, `subj`, `time`, `echo`, `post`, `hash` from `messages` where echo=? order by time desc";
+        = "select * FROM 'messages' where echo=? order by time desc";
 
     my $sth = $dbh->prepare($q);
     $sth->execute($echo);
@@ -310,7 +299,6 @@ sub echoes {
         push( @posts, $hash );
     }
     
-    print STDERR Dumper \@posts;
     return @posts;
 }
 
@@ -347,31 +335,33 @@ sub to_me {
 }
 
 sub select_new {
-    my ( $self, $msg ) = @_;
+    my ( $self, @hashes ) = @_;
     my $dbh = $self->{_dbh};
 
     my $q
-        = "select from, to, subj, time, echo, post, hash from messages where hash='$msg'";
+        = "select * from messages where hash IN (".join(',',('?')x@hashes).") order by time desc;";
 
     my $sth = $dbh->prepare($q);
-    $sth->execute();
-    my ( $from, $to, $subj, $time, $echo, $post, $h );
-
-    while ( my @hash = $sth->fetchrow_array() ) {
-        ( $from, $to, $subj, $time, $echo, $post, $h ) = @hash;
+    $sth->execute(@hashes);
+    
+    my @mesg;
+    while (my $m = $sth->fetchrow_hashref()){
+        push @mesg, $m;
     }
+    return @mesg;
+}
 
-    my $data = {
-        from => "$from",
-        to   => "$to",
-        subj => "$subj",
-        time => $time,
-        echo => "$echo",
-        post => "$post",
-        hash => "$h",
-    };
+sub message {
+    my ( $self, $hash ) = @_;
+    my $dbh = $self->{_dbh};
 
-    return $data;
+    my $q
+        = "select * from messages where hash=?";
+
+    my $sth = $dbh->prepare($q);
+    $sth->execute($hash);
+    
+    return $sth->fetchrow_hashref();
 }
 
 sub add_user
@@ -462,9 +452,8 @@ sub echoareas
     
     my $sq = $db->prepare ('SELECT DISTINCT user_sub.areaname FROM user_sub INNER JOIN users ON user_sub.userid = users.id WHERE users.node=?');
     $sq->execute($host);
-    my @res = (map {$_->[0]} @{$sq->fetchall_arrayref()});
 
-    return @res;
+    return (map {$_->[0]} @{$sq->fetchall_arrayref()});
 }
 
 sub hosts

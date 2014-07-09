@@ -40,4 +40,33 @@ sub send {
     }
 }
 
+sub push {
+    my ($self, $host) = @_;
+    my $db = $self->{_db};
+    
+    my @outmesg = $db->host_out;
+    for my $out (@outmesg) {
+        my $auth = $db->user($out->{from})->{auth};
+        my $ua = LWP::UserAgent->new;
+        $ua->agent("iiplc/0.1rc1");
+        print STDERR Dumper $out;
+        my $response
+            = $ua->post( $host.'u/point', { 'pauth' => $auth, 'tmsg' => $out->{base64} } );
+
+        if ( $response->{_rc} == 200 ) {
+            $db->update_out($out->{id});
+        } else {
+            print STDERR "push failed for msg $out->{id}\n",$response->content,"\n";
+        }
+    }
+}
+
+sub push_all {
+    my $self = shift;
+    my @hosts = $self->{_db}->hosts;
+    for my $h (@hosts) {
+        $self->{_db}->open($h);
+        $self->push($h);
+    }
+}
 1;

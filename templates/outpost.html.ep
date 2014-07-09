@@ -1,0 +1,7 @@
+<div class=post>
+    <a style="text-decoration:none;" href="/s?subj=<%= $msg->{subj} %>&echo=<%= $msg->{echo} %>"><h2><%= $msg->{subj} %></h2></a>
+    <div class=mail>
+        To: <strong><a style='color:#222;text-decoration:none;' href='/u?user=<%= $msg->{to} %>'><%= $msg->{to} %></a></strong> in <a style='color:#222;' href='/e?echo=<%= $msg->{echo} %>&view=thread'><%= $msg->{echo} %></a>
+    </div>
+    <div class=text><p><%== format_mesg($msg->{post}) %></p></div>
+</div>

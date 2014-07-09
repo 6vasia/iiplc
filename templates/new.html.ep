@@ -1,0 +1,26 @@
+% layout 'default';
+% title 'ii :: Новое сообщение';
+% my $repto = stash('repto');
+% if ($repto) {
+%= include 'post', msg => $repto;
+% }
+<div class=post>
+<div class='send_form'>
+<%= form_for enc => (method => 'POST') => begin %>
+<%= hidden_field 'echo' => stash('area') %>
+% if (stash('repto')) {
+<%= hidden_field 'repto' => $repto->{hash} %>
+<%= label_for 'to' => 'Кому:' %>
+<%= text_field 'to' => $repto->{from} %><br />
+<%= label_for 'subj' => 'Тема:' %>
+<%= text_field 'subj' => resubj($repto->{subj}) %><br />
+% } else {
+<%= label_for 'to' => 'Кому:' %>
+<%= text_field 'to' => 'All' %><br />
+<%= label_for 'subj' => 'Тема:' %>
+<%= text_field 'subj' %><br />
+% }
+<%= text_area 'post' , cols => 80, rows => 12 %><br />
+<%= submit_button 'Запостить' %>
+<% end %>
+</div></div>

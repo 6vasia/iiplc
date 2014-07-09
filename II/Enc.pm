@@ -20,12 +20,7 @@ sub new {
 
 sub decrypt {
     my ( $self, $base64 ) = @_;
-
-    # Decrypt message
-    my $dec = decode_base64($base64);
-    # my $dec = `echo "$base64" | base64 -d`;
-
-    return $dec;
+    return decode_base64($base64);
 }
 
 sub encode {
@@ -38,32 +33,23 @@ sub encode {
     # Make base64 message
     my $message = $data->{echo} . "\n";
     $message .= $data->{to} . "\n";
-    $message .= $data->{subg} . "\n\n";
+    $message .= $data->{subj} . "\n\n";
     $message .= '@repto:' . $data->{hash} . "\n" if defined( $data->{hash} );
     $message .= $data->{post};
 
-    my $encoded = `echo "$message" | base64`;
+    my $encoded = encode_base64($message);
     $encoded =~ s/\//_/g;
     $encoded =~ s/\+/-/g;
 
-    # Preparsing
-    my $post = II::T->in_pre($data->{post});
-
-    # Make data
-    my %out = (
-        hash      => $hash,
-        time      => $data->{time},
-        echo      => $data->{echo},
-        from_user => $data->{from},
-        to_user   => $data->{to},
-        subg      => $data->{subg},
-        post      => $post,
-        base64    => $encoded,
-        send      => 0,
+    $db->write_out(
+        echo    => $data->{echo},
+        from    => $data->{from},
+        to      => $data->{to},
+        subj    => $data->{subj},
+        post    => $data->{post},
+        base64  => $encoded,
+        sent    => 0,
     );
-
-    $db->write_out(%out);
-
     return 0;
 }
 

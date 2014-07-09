@@ -45,21 +45,57 @@ my $GET    = II::Get->new;
 my $render = II::Render->new;
 my $db = II::DB->new;
 
-under '/' => sub {
+helper resubj => sub {
+    my ($self, $subj) = @_;
+    unless ($subj =~ /^re:/i) {
+        $subj = 'Re: '.$subj;
+    }
+    return $subj;
+};
+
+helper format_mesg => sub {
+    my ($self, $post) = @_;
+
+    $post =~ s/</&lt;/g;
+    $post =~ s/>/&gt;/g;
+    $post =~ s/&gt;(.+)/<font color='green'>>$1<\/font>/g;
+    $post =~ s/--/&mdash;/g;
+    $post =~ s/.?\*(.+)\*.?/<b>$1<\/b>/g;
+    $post =~ s/^$/<br>\n/g;
+    $post =~ s/(.?)\n/$1<br>\n/g;
+    $post
+        =~ s/(https?:\/\/.+\.(jpg|png|gif))/<a href="$1"><img src="$1" width="15%" height="15%" \/><\/a>/g;
+    $post
+        =~ s/(https?:\/\/.+\.(JPG|PNG|GIF))/<a href="$1"><img src="$1" width="15%" height="15%" \/><\/a>/g;
+    return $post;
+};
+
+under sub {
     my $self = shift;
     my $uid = $self->session('uid');
-    
+    if (my $m = $self->session('message')) {
+        $self->stash(message => $m);
+        delete $self->session->{message};
+    }
+    if (my $e = $self->session('error')) {
+        $self->stash(error => $e);
+        delete $self->session->{error};
+    }
     if ($uid){
         my $user = $db->user($uid);
         $db->open($user->{node});
+        $self->stash( echoindex => $user->{sub} );
         return 1;
     }
     return 1 if $self->url_for->path =~ m|/login|;
-    return $self->redirect_to('login');
+    $self->redirect_to('login');
+    return 0;
 };
 
 get '/' => sub {
     my $self = shift;
+    my @hashes = $db->select_index($self->session('uid'), 50);
+    $self->stash (messages => [$db->select_new(@hashes)]);
     $self->render;
 } => 'index';
 
@@ -120,6 +156,46 @@ get '/get' => sub {
     $self->redirect_to('index');
 };
 
+get '/new/#area' => sub {
+    my $self = shift;
+    if ($self->param('repto')) {
+        $self->stash(repto => $db->message($self->param('repto')));
+    }
+    $self->render;
+} => 'new';
+
+post '/enc' => sub {
+    my $self = shift;
+    
+    my $enc = II::Enc->new( $config, {
+            from => $self->session('uid'),
+            echo => $self->param('echo'),
+            to   => $self->param('to'),
+            subj => $self->param('subj'),
+            post => $self->param('post'),
+            hash => $self->param('repto') ? $self->param('repto') : undef,
+        } );
+    if ($enc->encode() == 0) {
+        $self->session(message => 'Сообщение сохранено');
+    } else {
+        $self->session(error => 'Не удалось сохранить сообщение');
+    }
+    return $self->redirect_to('index');
+} => 'enc';
+
+get '/out' => sub {
+    my $self = shift;
+    $self->stash(messages => [$db->select_out($self->session('uid'))]);
+    $self->render;
+} => 'out';
+
+get '/push' => sub {
+    my $self = shift;
+    my $send = II::Send->new;
+    $send->push_all;
+    $self->render(text => 'pushed');
+} => 'push';
+
 sub thread
 {
     my $env = shift;
@@ -135,27 +211,6 @@ sub thread
     my $thread = $render->thread( $subg, $echo );
 
     return [ 200, [ 'Content-type' => 'text/html' ], ["$thread"], ];
-};
-
-sub get_mesg
-{
-    my $env = shift;
-    unless ($env->{'psgix.session'}{user_id}) {
-        return [ 302, [ 'Location' => '/login' ], [] ]
-    }
-    my $msgs    = $GET->get_echo();
-    my $new_mes = $render->new_mes($msgs);
-    return [ 200, [ 'Content-type' => 'text/html' ], ["$new_mes"], ];
-};
-
-sub root
-{
-    my $env = shift;
-    unless ($env->{'psgix.session'}{user_id}) {
-        return [ 302, [ 'Location' => '/login' ], [] ]
-    }
-    my $index = $render->index($config);
-    return [ 200, [ 'Content-type' => 'text/html' ], [$index], ];
 };
 
 sub me{
@@ -175,69 +230,6 @@ sub tree
     }
     my $subges = $render->tree($config);
     return [ 200, [ 'Content-type' => 'text/html' ], ['Дерево'], ];
-};
-
-sub new_mesg
-{
-    my $env = shift;
-    unless ($env->{'psgix.session'}{user_id}) {
-        return [ 302, [ 'Location' => '/login' ], [] ]
-    }
-
-    my $req  = Plack::Request->new($env);
-    my $echo = $req->param('echo');
-
-    my $send = $render->send_new($echo);
-    return [ 200, [ 'Content-type' => 'text/html' ], [$send], ];
-};
-
-sub send_mesg
-{
-    my $env = shift;
-    unless ($env->{'psgix.session'}{user_id}) {
-        return [ 302, [ 'Location' => '/login' ], [] ]
-    }
-
-    my $req  = Plack::Request->new($env);
-    my $hash = $req->param('hash');
-    my $send = $render->send($hash);
-
-    return [ 200, [ 'Content-type' => 'text/html' ], [$send], ];
-};
-
-sub enc
-{
-    my $env = shift;
-    unless ($env->{'psgix.session'}{user_id}) {
-        $env->{'psgix.session'}{redir_to} = '/enc';
-        return [ 302, [ 'Location' => '/login' ], [] ]
-    }
-
-    my $req = Plack::Request->new($env);
-
-    # Get parameters
-    my $echo = $req->param('echo');
-    my $to   = $req->param('to');
-    my $post = $req->param('post');
-    my $subg = $req->param('subg');
-    my $hash = $req->param('hash');
-    my $time = time();
-
-    print Dumper($config);
-    my $data = {
-        echo => $echo,
-        to   => $to,
-        from => $config->{nick},
-        subg => $subg,
-        post => $post,
-        time => $time,
-        hash => $hash,
-    };
-
-    my $enc = II::Enc->new( $config, $data );
-    $enc->encode() == 0 or die "$!\n";
-
-    return [ 302, [ 'Location' => '/out' ], [], ];
 };
 
 sub out
@@ -288,75 +280,6 @@ sub user
 
     return [ 200, [ 'Content-type' => 'text/html' ], [$mes_from], ];
 };
-
-sub login
-{
-    my $env = shift;
-    my $login = $render->login($env->{'Plack::Middleware::Auth::Form.LoginForm'});
-    
-    return [ 200, [ 'Content-type' => 'text/html' ], [$login], ];
-}
-
-sub register
-{
-    my $env = shift;
-    my $req = Plack::Request->new($env);
-
-    my $error = "";
-    my $email = $req->param('email');
-    my $pass1 = $req->param('pass1');
-    my $pass2 = $req->param('pass2');
-
-    if ($email) {
-        unless (defined $pass1 and $pass1 ne '') {
-            $error = 'Пустой пароль недопустим';
-        } else {
-            if ($pass1 ne $pass2) {
-                $error = 'Пароль и подтверждение не совпадают';
-            } else {
-                unless ($email =~ /^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$/) {
-                    $error = 'Мне не нравится ваш e-mail';
-                } else {
-                    # at last
-                    my $db = II::DB->new();
-                    if ($db->check_user ($email)) {
-                        $error = 'E-mail уже используется';
-                    } else {
-                        if ($db->add_user(login => $email, pwhash => sha1_hex($pass1))) {
-                            $env->{'psgix.session'}{user_id} = $email;
-                            return return [ 302, [ 'Location' => '/config' ], [] ]
-                        } else {
-                            $error = 'Что-то сломалось :(';
-                        }
-                    }
-                }
-            }
-        }
-    }
-    my $reg_form = $render->register($error);
-    
-    return [ 200, [ 'Content-type' => 'text/html' ], [$reg_form], ];
-}
-
-sub config
-{
-    my $env = shift;
-    unless ($env->{'psgix.session'}{user_id}) {
-        $env->{'psgix.session'}{redir_to} = '/config';
-        return [ 302, [ 'Location' => '/login' ], [] ]
-    }
-
-    my $req = Plack::Request->new($env);
-
-    my $error = "";
-    my $node = $req->param('node');
-    my $auth = $req->param('auth');
-    my $sub = $req->param('sub');
-    
-    my $conf_form = $render->config($error);
-
-    return [ 200, [ 'Content-type' => 'text/html' ], [$conf_form], ];
-}
 
 #app->secrets (['some secret passphrase']);
 app->start;

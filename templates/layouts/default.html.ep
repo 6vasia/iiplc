@@ -4,13 +4,42 @@
 <link rel="stylesheet" type="text/css" href="/static/main.css" />
 <link rel="stylesheet" type="text/css" href="/static/aristo/aristo.min.css" />
 </head>
-<body><h1><%= title %></h1>\
+<body>
+<div class='headall'>
+  <h1><%= title %></h1>
+  <p>
+    <b>[</b> <%= link_to 'лента' => 'index' %> <b>]</b>&nbsp
+    <!--b>[</b> <%= link_to 'получить сообщения' => 'get' %> <b>]</b>&nbsp-->
+    <b>[</b> <%= link_to 'параметры' => 'config' %> <b>]</b>&nbsp
+    <!--b>[</b> <%= link_to 'моя переписка' => 'me' %> <b>]</b>&nbsp-->
+    <b>[</b> <%= link_to 'неотправленные сообщения' => 'out' %> <b>]</b>&nbsp
+    <b>[</b> <%= link_to 'выход' => 'logout' %> <b>]</b>&nbsp
+  </p>
+</div>
 <% my $link_block = begin %>\
 <hr><%= link_to 'index' => begin %>Назад<% end %>\
-<% end %>
+<% end %>\
+<% my $index_block = begin %>\
+% my @echoes = @_;
+<div class='echo'>
+% for (@echoes) {
+%=  link_to $_ => '/echo/'.$_ ;
+<br>\
+% }
+</div>
+<% end %>\
 <script type="text/javascript" src="/static/functions.js"></script>
+% if (stash('echoindex')) {
+%== $index_block->(@{stash('echoindex')})
+% }
+% if (stash('message')) {
+<div class='message'><p><%= stash('message') %></p></div>
+% }
+% if (stash('error')) {
+<div class='error'><p><%= stash('error') %></p></div>
+% }
 <%= content %>\
-% if ($title =~ /::/){
+% if ($title =~ /:::/){
 %== &$link_block
 % }
 <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1/jquery.min.js"></script>

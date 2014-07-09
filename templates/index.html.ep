@@ -1,8 +1,9 @@
 % layout 'default';
 % title 'ii :: Глагне';
-<hr>
-<% if (my $message = flash 'message' ) { %>
+% if (my $message = flash 'message' ) {
 <b><%= $message %></b>
 <hr>
-<% } %>
-<br>
+% }
+% for (@{$messages}) {
+%= include 'post', msg => $_;
+% }

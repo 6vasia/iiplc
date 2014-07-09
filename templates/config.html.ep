@@ -1,5 +1,6 @@
 % layout 'default';
 % title 'ii :: Параметры';
+<div class='config'>
 <%= form_for config => (method => 'POST') => begin %>
 <%= hidden_field 'update' => 1 %>
 URL ноды:<br>
@@ -10,3 +11,4 @@ URL ноды:<br>
 <%= text_area 'sub' => $user->{sub} %><br>
 <%= submit_button 'Сохранить' %>
 <% end %>
+</div>
