@@ -2,6 +2,7 @@ package II::Enc;
 
 use II::DB;
 use MIME::Base64;
+use Encode;
 
 sub new {
     my $class = shift;
@@ -37,7 +38,7 @@ sub encode {
     $message .= '@repto:' . $data->{hash} . "\n" if defined( $data->{hash} );
     $message .= $data->{post};
 
-    my $encoded = encode_base64($message);
+    my $encoded = encode_base64(encode_utf8($message));
     $encoded =~ s/\//_/g;
     $encoded =~ s/\+/-/g;
 
