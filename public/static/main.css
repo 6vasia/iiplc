@@ -197,3 +197,5 @@
     background-color: #C9C9C9;
     margin-right: 5%;
 }
+label.field-with-error { color: #dd7e5e }
+input.field-with-error { background-color: #fd9e7e }

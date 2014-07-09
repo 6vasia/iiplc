@@ -16,6 +16,20 @@ sub new {
 
     my $udbh = DBI->connect( "dbi:SQLite:dbname=".$conf->{server}{userdb}, "", "", {sqlite_unicode => 1} ) or die "$!";
 
+    my $create = qq(
+CREATE TABLE IF NOT EXISTS 'users'
+  ('id' INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  'login' TEXT NOT NULL,
+  'pwhash' VARCHAR(40) NOT NULL,
+  'node' TEXT,
+  'auth' TEXT););
+    $udbh->do($create) or die "$!";
+    $create = qq(
+CREATE TABLE IF NOT EXISTS 'user_sub'
+  ('userid' INTEGER NOT NULL,
+  'areaname' TEXT NOT NULL););
+    $udbh->do($create) or die "$!";
+
     my $self = {
         _udbh => $udbh,
     };

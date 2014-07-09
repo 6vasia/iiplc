@@ -32,11 +32,11 @@
 % if (stash('echoindex')) {
 %== $index_block->(@{stash('echoindex')})
 % }
-% if (stash('message')) {
-<div class='message'><p><%= stash('message') %></p></div>
+% if (session('message')) {
+<div class='message'><p><%= session('message') %></p></div>
 % }
-% if (stash('error')) {
-<div class='error'><p><%= stash('error') %></p></div>
+% if (session('error')) {
+<div class='error'><p><%= session('error') %></p></div>
 % }
 <%= content %>\
 % if ($title =~ /:::/){

@@ -1,0 +1,13 @@
+% layout 'default';
+% title 'ii :: Регистрация';
+<div class='config'>
+<%= form_for reg => (method => 'POST') => begin %>
+<%= label_for 'email' => 'E-mail:' %><br>
+<%= text_field 'email' %><br>
+<%= label_for 'pass1' => 'Пароль:' %><br>
+<%= password_field 'pass1' %><br>
+<%= label_for 'pass2' => 'Подтверждение:' %><br>
+<%= password_field 'pass2' %><br>
+<%= submit_button 'Регистрация' %>
+<% end %>
+</div>

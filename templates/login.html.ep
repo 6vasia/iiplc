@@ -1,10 +1,12 @@
 % layout 'default';
 % title 'ii :: Вход';
+<div class='config'>
 <%= form_for login => begin %>
 E-mail:<br>
 <%= text_field 'email' %><br>
 Пароль:<br>
 <%= password_field 'pass' %><br>
 <%= submit_button 'Login' %>
+<%= link_to '[регистрация]' => 'reg' %>
 <% end %>
-
+</div>
