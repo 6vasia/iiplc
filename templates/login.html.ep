@@ -1,7 +1,7 @@
 % layout 'default';
 % title 'ii :: Вход';
 <div class='config'>
-<%= form_for login => begin %>
+<%= form_for login => (method => 'POST') => begin %>
 E-mail:<br>
 <%= text_field 'email' %><br>
 Пароль:<br>

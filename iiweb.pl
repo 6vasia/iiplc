@@ -77,7 +77,7 @@ under sub {
         $self->stash( echoindex => $user->{sub} );
         return 1;
     }
-    return 1 if $self->url_for->path =~ m@^/login|^/reg@;
+    return 1 if $self->url_for->path =~ m@^/login|^/reg|^/get|^/push@;
     $self->session(redirect => $self->req->url);
     $self->redirect_to('login');
     return 0;
@@ -146,7 +146,7 @@ get '/echo/#area' => sub {
 get '/get' => sub {
     my $self = shift;
     $GET->fetch_all;
-    $self->redirect_to('index');
+    $self->render(text => 'got');
 };
 
 get '/new/#area' => sub {

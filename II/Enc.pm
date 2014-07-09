@@ -2,7 +2,7 @@ package II::Enc;
 
 use II::DB;
 use MIME::Base64;
-use Encode;
+use Encode qw(encode_utf8);
 
 sub new {
     my $class = shift;
