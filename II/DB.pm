@@ -419,9 +419,13 @@ sub update_user
     my ( $self, $user ) = @_;
     my $dbh = $self->{_udbh};
 
-    $self->begin;
+    $user->{node} =~ s/^\s+//;
+    $user->{node} =~ s/\s+$//;
+    $user->{node} =~ s@/u/$@/@;
+    $user->{sub} = [ map {s/^\s+//;s/\s+$//;$_} @{$user->{sub}}]; 
 
     my $sq = $dbh->prepare ("UPDATE users SET node=?, auth=? WHERE id=?");
+    $self->begin;
     $sq->execute($user->{node}, $user->{auth}, $user->{id});
     
     $sq = $dbh->prepare ('DELETE FROM user_sub WHERE userid=?');
