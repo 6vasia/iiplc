@@ -1,6 +1,0 @@
-PRAGMA foreign_keys=OFF;
-BEGIN TRANSACTION;
-CREATE TABLE 'messages' ('id' INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 'echo' VARCHAR(45), 'from' TEXT, 'to' TEXT, 'subj' VARCHAR(50), 'time' TIMESTAMP, 'hash' VARCHAR(30), 'read' INT, 'post' TEXT);
-CREATE TABLE 'output' ('id' INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 'echo' VARCHAR(45), 'from' TEXT, 'to' TEXT, 'subj' VARCHAR(50), 'time' TIMESTAMP, 'hash' VARCHAR(30), 'send' INT, 'post' TEXT, base64 TEXT);
-CREATE TABLE echo('echo' VARCHAR(32), 'hash' VARCHAR(32));
-COMMIT;

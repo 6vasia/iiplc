@@ -1,6 +1,0 @@
-PRAGMA foreign_keys=OFF;
-BEGIN TRANSACTION;
-CREATE TABLE 'users' ('id' INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 'login' TEXT, 'pwhash' VARCHAR(40), 'node' TEXT, 'auth' TEXT);
-CREATE TABLE 'user_sub' ('userid' INTEGER NOT NULL, 'areaname' TEXT);
-CREATE TABLE 'user_mesg' ('id' INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 'area' TEXT, 'subj', TEXT, 'to' TEXT, 'mesg' TEXT);
-COMMIT;
