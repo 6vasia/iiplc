@@ -1,3 +1,6 @@
+# Copyright (c) 2014, Vasiliy Vylegzhanin <v.gadfly@gmail.com>
+# Copyright (c) 2014, Difrex <difrex.punk@gmail.com>
+# Some rights reserved.
 package II::Enc;
 
 use II::DB;
