@@ -1,6 +1,5 @@
 % layout 'default';
 % title 'ii :: Глагне';
-% }
 % for (@{$messages}) {
 %= include 'post', msg => $_;
 % }
