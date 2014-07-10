@@ -34,7 +34,7 @@ use II::Send;
 use II::DB;
 use II::Enc;
 
-use Digest::SHA1 qw(sha1_hex);
+use Digest::SHA qw(sha1_hex);
 # Debug
 use Data::Dumper;
 
