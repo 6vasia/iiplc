@@ -90,7 +90,7 @@ get '/' => sub {
     $self->render;
 } => 'index';
 
-get '/login' => sub {
+any '/login' => sub {
     my $self = shift;
     
     my $email = $self->param('email') || '';
