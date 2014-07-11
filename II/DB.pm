@@ -74,13 +74,6 @@ sub open
         base64 TEXT NOT NULL);
     );
     $dbh->do($create) or die "$!";
-    $create = qq(
-      CREATE TABLE IF NOT EXISTS 'echo' 
-        ('echo' VARCHAR(45),
-        'hash' VARCHAR(32)
-        );
-    );
-    $dbh->do($create) or die "$!";
     $self->{_dbh} = $dbh;
 }
 
@@ -108,19 +101,6 @@ sub commit {
     my ($self) = @_;
     $self->{_udbh}->do('COMMIT');
     $self->{_dbh}->do('COMMIT');
-}
-
-sub write_echo {
-    my ( $self, %data ) = @_;
-    my $dbh = $self->{_dbh};
-    
-    my $stmt = "INSERT INTO 'messages' (".
-        join (',', map {"'$_'"} keys %data).
-        ") VALUES (".
-        join (',', ("?")x(scalar keys %data)).
-        ");";
-    my $sth = $dbh->prepare($stmt);
-    $sth->execute(values %data);
 }
 
 sub write_out {

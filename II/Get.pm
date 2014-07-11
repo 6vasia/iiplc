@@ -55,8 +55,6 @@ sub get_echoes {
                             echo => $echo,
                             hash => $_,
                         };
-                        # Write new echo message
-                        $db->write_echo(%$echo_hash);
                         push( @new, $echo_hash );
                     }
                 }
